@@ -221,49 +221,50 @@ We can add these step by step.
 
 First for the blue tint we just need to apply an OpenCV colormap:
 
-# map the frame into a blue-green colorspace
-holo = cv2.applyColorMap(frame, cv2.COLORMAP_WINTER)
-Then we can add the scan lines with a halftone-like effect:
+    # map the frame into a blue-green colorspace
+    holo = cv2.applyColorMap(frame, cv2.COLORMAP_WINTER)
+    Then we can add the scan lines with a halftone-like effect:
 
-# for every bandLength rows darken to 10-30% brightness,
-# then don't touch for bandGap rows.
-bandLength, bandGap = 2, 3
-for y in range(holo.shape[0]):
-    if y % (bandLength+bandGap) < bandLength:
-        holo[y,:,:] = holo[y,:,:] * np.random.uniform(0.1, 0.3)
+    # for every bandLength rows darken to 10-30% brightness,
+    # then don't touch for bandGap rows.
+    bandLength, bandGap = 2, 3
+    for y in range(holo.shape[0]):
+        if y % (bandLength+bandGap) < bandLength:
+            holo[y,:,:] = holo[y,:,:] * np.random.uniform(0.1, 0.3)
+        
 Next we can add some ghosting by adding weighted copies of the current effect, shifted along an axis:
 
-# shift_img from: https://stackoverflow.com/a/53140617
-def shift_img(img, dx, dy):
-    img = np.roll(img, dy, axis=0)
-    img = np.roll(img, dx, axis=1)
-    if dy>0:
-        img[:dy, :] = 0
-    elif dy<0:
-        img[dy:, :] = 0
-    if dx>0:
-        img[:, :dx] = 0
-    elif dx<0:
-        img[:, dx:] = 0
-    return img
+    # shift_img from: https://stackoverflow.com/a/53140617
+    def shift_img(img, dx, dy):
+        img = np.roll(img, dy, axis=0)
+        img = np.roll(img, dx, axis=1)
+        if dy>0:
+            img[:dy, :] = 0
+        elif dy<0:
+            img[dy:, :] = 0
+        if dx>0:
+            img[:, :dx] = 0
+        elif dx<0:
+            img[:, dx:] = 0
+        return img
 
-# the first one is roughly: holo * 0.2 + shifted_holo * 0.8 + 0
-holo2 = cv2.addWeighted(holo, 0.2, shift_img(holo1.copy(), 5, 5), 0.8, 0)
-holo2 = cv2.addWeighted(holo2, 0.4, shift_img(holo1.copy(), -5, -5), 0.6, 0)
-Last: We’ll want to keep some of the original color, so let’s combine the holo effect with the original frame similar to how we added the ghosting:
+    # the first one is roughly: holo * 0.2 + shifted_holo * 0.8 + 0
+    holo2 = cv2.addWeighted(holo, 0.2, shift_img(holo1.copy(), 5, 5), 0.8, 0)
+    holo2 = cv2.addWeighted(holo2, 0.4, shift_img(holo1.copy(), -5, -5), 0.6, 0)
+    Last: We’ll want to keep some of the original color, so let’s combine the holo effect with the original frame similar to how we added the ghosting:
 
-holo_done = cv2.addWeighted(img, 0.5, holo2, 0.6, 0)
+    holo_done = cv2.addWeighted(img, 0.5, holo2, 0.6, 0)
+    
 A frame with the hologram effect now looks like:
-
 
 On it’s own this looks pretty :shrug:
 
 But combined with our virtual background it looks more like:
 
-
 There we go! :tada: (I promise it looks cooler with motion / video :upside_down_face:)
 
-#Outputting Video
+# Outputting Video
+
 Now we’re just missing one thing … We can’t actually use this in a call yet.
 
 To fix that, we’re going to use pyfakewebcam and v4l2loopback to create a fake webcam device.
@@ -272,170 +273,179 @@ We’re also going to actually wire this all up with docker.
 
 First create a requirements.txt with our dependencies:
 
-fakecam/requirements.txtDockerfile
-numpy==1.18.2
-opencv-python==4.2.0.32
-requests==2.23.0
-pyfakewebcam==0.1.0
+    fakecam/requirements.txtDockerfile
+    numpy==1.18.2
+    opencv-python==4.2.0.32
+    requests==2.23.0
+    pyfakewebcam==0.1.0
+    
 And then the Dockerfile for the fake camera app:
 
 fakecam/DockerfileDockerfile
-FROM python:3-buster
-# ensure pip is up to date
-RUN pip install --upgrade pip
-# install opencv dependencies
-RUN apt-get update && \
-    apt-get install -y \
-      `# opencv requirements` \
-      libsm6 libxext6 libxrender-dev \
-      `# opencv video opening requirements` \
-      libv4l-dev
-# install our requirements
-WORKDIR /src
-COPY requirements.txt /src/
-RUN pip install --no-cache-dir -r /src/requirements.txt
-# copy in the virtual background
-COPY background.jpg /data/
-# run our fake camera script (with unbuffered output for easier debug)
-COPY fake.py /src/
-ENTRYPOINT python -u fake.py
+
+    FROM python:3-buster
+    # ensure pip is up to date
+    RUN pip install --upgrade pip
+    # install opencv dependencies
+    RUN apt-get update && \
+        apt-get install -y \
+          `# opencv requirements` \
+          libsm6 libxext6 libxrender-dev \
+          `# opencv video opening requirements` \
+          libv4l-dev
+    # install our requirements
+    WORKDIR /src
+    COPY requirements.txt /src/
+    RUN pip install --no-cache-dir -r /src/requirements.txt
+    # copy in the virtual background
+    COPY background.jpg /data/
+    # run our fake camera script (with unbuffered output for easier debug)
+    COPY fake.py /src/
+    ENTRYPOINT python -u fake.py
+
 We’re going to need to install v4l2loopback from a shell:
 
-sudo apt install v4l2loopback-dkms
+    sudo apt install v4l2loopback-dkms
+
 And then configure a fake camera device:
 
-sudo modprobe -r v4l2loopback
-sudo modprobe v4l2loopback devices=1 video_nr=20 card_label="v4l2loopback" exclusive_caps=1
+    sudo modprobe -r v4l2loopback
+    sudo modprobe v4l2loopback devices=1 video_nr=20 card_label="v4l2loopback" exclusive_caps=1
+
 We need the exclusive_caps setting for some apps (chrome, zoom) to work, the label is just for our convenience when selecting the camera in apps, and the video number just makes this /dev/video20 if available, which is unlikely to be already in use.
 
 Now we can update our script to create the fake camera:
 
-# again use width, height from before
-fake = pyfakewebcam.FakeWebcam('/dev/video20', width, height)
+    # again use width, height from before
+    fake = pyfakewebcam.FakeWebcam('/dev/video20', width, height)
+
 We also need to note that pyfakewebcam expects images in RGB (red, green, blue) while our OpenCV operations are in BGR (blue, green, red) channel order.
 
 We can fix this before outputting and then send a frame with:
 
-frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-fake.schedule_frame(frame)
-All together the script looks like:
-
-fakecam/fake.pyPython
-import os
-import cv2
-import numpy as np
-import requests
-import pyfakewebcam
-
-def get_mask(frame, bodypix_url='http://localhost:9000'):
-    _, data = cv2.imencode(".jpg", frame)
-    r = requests.post(
-        url=bodypix_url,
-        data=data.tobytes(),
-        headers={'Content-Type': 'application/octet-stream'})
-    mask = np.frombuffer(r.content, dtype=np.uint8)
-    mask = mask.reshape((frame.shape[0], frame.shape[1]))
-    return mask
-
-def post_process_mask(mask):
-    mask = cv2.dilate(mask, np.ones((10,10), np.uint8) , iterations=1)
-    mask = cv2.blur(mask.astype(float), (30,30))
-    return mask
-
-def shift_image(img, dx, dy):
-    img = np.roll(img, dy, axis=0)
-    img = np.roll(img, dx, axis=1)
-    if dy>0:
-        img[:dy, :] = 0
-    elif dy<0:
-        img[dy:, :] = 0
-    if dx>0:
-        img[:, :dx] = 0
-    elif dx<0:
-        img[:, dx:] = 0
-    return img
-
-def hologram_effect(img):
-    # add a blue tint
-    holo = cv2.applyColorMap(img, cv2.COLORMAP_WINTER)
-    # add a halftone effect
-    bandLength, bandGap = 2, 3
-    for y in range(holo.shape[0]):
-        if y % (bandLength+bandGap) < bandLength:
-            holo[y,:,:] = holo[y,:,:] * np.random.uniform(0.1, 0.3)
-    # add some ghosting
-    holo_blur = cv2.addWeighted(holo, 0.2, shift_image(holo.copy(), 5, 5), 0.8, 0)
-    holo_blur = cv2.addWeighted(holo_blur, 0.4, shift_image(holo.copy(), -5, -5), 0.6, 0)
-    # combine with the original color, oversaturated
-    out = cv2.addWeighted(img, 0.5, holo_blur, 0.6, 0)
-    return out
-
-def get_frame(cap, background_scaled):
-    _, frame = cap.read()
-    # fetch the mask with retries (the app needs to warmup and we're lazy)
-    # e v e n t u a l l y c o n s i s t e n t
-    mask = None
-    while mask is None:
-        try:
-            mask = get_mask(frame)
-        except requests.RequestException:
-            print("mask request failed, retrying")
-    # post-process mask and frame
-    mask = post_process_mask(mask)
-    frame = hologram_effect(frame)
-    # composite the foreground and background
-    inv_mask = 1-mask
-    for c in range(frame.shape[2]):
-        frame[:,:,c] = frame[:,:,c]*mask + background_scaled[:,:,c]*inv_mask
-    return frame
-
-# setup access to the *real* webcam
-cap = cv2.VideoCapture('/dev/video0')
-height, width = 720, 1280
-cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
-cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
-cap.set(cv2.CAP_PROP_FPS, 60)
-
-# setup the fake camera
-fake = pyfakewebcam.FakeWebcam('/dev/video20', width, height)
-
-# load the virtual background
-background = cv2.imread("/data/background.jpg")
-background_scaled = cv2.resize(background, (width, height))
-
-# frames forever
-while True:
-    frame = get_frame(cap, background_scaled)
-    # fake webcam expects RGB
     frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     fake.schedule_frame(frame)
-Now build the images:
+    All together the script looks like:
 
-docker build -t bodypix ./bodypix
-docker build -t fakecam ./fakecam
+    fakecam/fake.pyPython
+    import os
+    import cv2
+    import numpy as np
+    import requests
+    import pyfakewebcam
+
+    def get_mask(frame, bodypix_url='http://localhost:9000'):
+        _, data = cv2.imencode(".jpg", frame)
+        r = requests.post(
+            url=bodypix_url,
+            data=data.tobytes(),
+            headers={'Content-Type': 'application/octet-stream'})
+        mask = np.frombuffer(r.content, dtype=np.uint8)
+        mask = mask.reshape((frame.shape[0], frame.shape[1]))
+        return mask
+
+    def post_process_mask(mask):
+        mask = cv2.dilate(mask, np.ones((10,10), np.uint8) , iterations=1)
+        mask = cv2.blur(mask.astype(float), (30,30))
+        return mask
+
+    def shift_image(img, dx, dy):
+        img = np.roll(img, dy, axis=0)
+        img = np.roll(img, dx, axis=1)
+        if dy>0:
+            img[:dy, :] = 0
+        elif dy<0:
+            img[dy:, :] = 0
+        if dx>0:
+            img[:, :dx] = 0
+        elif dx<0:
+            img[:, dx:] = 0
+        return img
+
+    def hologram_effect(img):
+        # add a blue tint
+        holo = cv2.applyColorMap(img, cv2.COLORMAP_WINTER)
+        # add a halftone effect
+        bandLength, bandGap = 2, 3
+        for y in range(holo.shape[0]):
+            if y % (bandLength+bandGap) < bandLength:
+                holo[y,:,:] = holo[y,:,:] * np.random.uniform(0.1, 0.3)
+        # add some ghosting
+        holo_blur = cv2.addWeighted(holo, 0.2, shift_image(holo.copy(), 5, 5), 0.8, 0)
+        holo_blur = cv2.addWeighted(holo_blur, 0.4, shift_image(holo.copy(), -5, -5), 0.6, 0)
+        # combine with the original color, oversaturated
+        out = cv2.addWeighted(img, 0.5, holo_blur, 0.6, 0)
+        return out
+
+    def get_frame(cap, background_scaled):
+        _, frame = cap.read()
+        # fetch the mask with retries (the app needs to warmup and we're lazy)
+        # e v e n t u a l l y c o n s i s t e n t
+        mask = None
+        while mask is None:
+            try:
+                mask = get_mask(frame)
+            except requests.RequestException:
+                print("mask request failed, retrying")
+        # post-process mask and frame
+        mask = post_process_mask(mask)
+        frame = hologram_effect(frame)
+        # composite the foreground and background
+        inv_mask = 1-mask
+        for c in range(frame.shape[2]):
+            frame[:,:,c] = frame[:,:,c]*mask + background_scaled[:,:,c]*inv_mask
+        return frame
+
+    # setup access to the *real* webcam
+    cap = cv2.VideoCapture('/dev/video0')
+    height, width = 720, 1280
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+    cap.set(cv2.CAP_PROP_FPS, 60)
+
+    # setup the fake camera
+    fake = pyfakewebcam.FakeWebcam('/dev/video20', width, height)
+
+    # load the virtual background
+    background = cv2.imread("/data/background.jpg")
+    background_scaled = cv2.resize(background, (width, height))
+
+    # frames forever
+    while True:
+        frame = get_frame(cap, background_scaled)
+        # fake webcam expects RGB
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        fake.schedule_frame(frame)
+    Now build the images:
+
+    docker build -t bodypix ./bodypix
+    docker build -t fakecam ./fakecam
+
 And run them like:
 
-# create a network
-docker network create --driver bridge fakecam
-# start the bodypix app
-docker run -d \
-  --name=bodypix \
-  --network=fakecam \
-  -p 9000:9000 \
-  --gpus=all --shm-size=1g --ulimit memlock=-1 --ulimit stack=67108864 \
-  bodypix
-# start the camera, note that we need to pass through video devices,
-# and we want our user ID and group to have permission to them
-# you may need to `sudo groupadd $USER video`
-docker run -d \
-  --name=fakecam \
-  --network=fakecam \
-  -u "$(id -u):$(getent group video | cut -d: -f3)" \
-  $(find /dev -name 'video*' -printf "--device %p ") \
-  fakecam
+    # create a network
+    docker network create --driver bridge fakecam
+    # start the bodypix app
+    docker run -d \
+      --name=bodypix \
+      --network=fakecam \
+      -p 9000:9000 \
+      --gpus=all --shm-size=1g --ulimit memlock=-1 --ulimit stack=67108864 \
+      bodypix
+    # start the camera, note that we need to pass through video devices,
+    # and we want our user ID and group to have permission to them
+    # you may need to `sudo groupadd $USER video`
+    docker run -d \
+      --name=fakecam \
+      --network=fakecam \
+      -u "$(id -u):$(getent group video | cut -d: -f3)" \
+      $(find /dev -name 'video*' -printf "--device %p ") \
+      fakecam
+      
 Now make sure to start this before opening the camera with any apps, and be sure to select the “v4l2loopback” / /dev/video20 camera in Zoom etc.
 
-#The Finished Result
+# The Finished Result
+
 Here’s a quick clip I recorded of this in action:
 
 Look! I’m dialing into the millenium falcon with an open source camera stack!
