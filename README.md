@@ -1,6 +1,10 @@
 # Open-Source-Virtual-Background
-https://elder.dev/posts/open-source-virtual-background/
 
+## Written by [BenTheElder](https://www.github.com/BenTheElder)
+
+Originally posted on his [blog](https://elder.dev/posts/open-source-virtual-background/)
+
+# Introduction
 
 With many of us around the globe under shelter in place due to COVID-19 video calls have become a lot more common. In particular, ZOOM has controversially become very popular. Arguably Zoom’s most interesting feature is the “Virtual Background” support which allows users to replace the background behind them in their webcam video feed with any image (or video).
 
@@ -12,38 +16,44 @@ Since I do not have a green screen I decided to simply implement my own backgrou
 
 It turns out we can actually get pretty decent results with off the shelf, open source components and just a little of our own code.
 
-#Reading The Camera
+# Reading The Camera
+
 First thing’s first: How are we going to get the video feed from our webcam for processing?
 
 Since I use Linux on my personal desktop (when not playing PC games) I chose to use the OpenCV python bindings as I’m already familiar with them and they include useful image processing primatives in addition to V4L2 bindings for reading from webcams.
 
 Reading a frame from the webcam with python-opencv is very simple:
 
-import cv2
-cap = cv2.VideoCapture('/dev/video0')
-success, frame = cap.read()
+    import cv2
+    cap = cv2.VideoCapture('/dev/video0')
+    success, frame = cap.read()
+
 For better results with my camera before capturing set:
 
-# configure camera for 720p @ 60 FPS
-height, width = 720, 1280
-cap.set(cv2.CAP_PROP_FRAME_WIDTH ,width)
-cap.set(cv2.CAP_PROP_FRAME_HEIGHT,height)
-cap.set(cv2.CAP_PROP_FPS, 60)
+    height, width = 720, 1280
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH ,width)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT,height)
+    cap.set(cv2.CAP_PROP_FPS, 60)
+
+
 Most video conferencing software seems to cap video to 720p @ 30 FPS or lower, but we won’t necessarily read every frame anyhow, this sets an upper limit.
 
 Put the frame capture in a loop and we’ve got our video feed!
 
-while True:
-    success, frame = cap.read()
+    while True:
+        success, frame = cap.read()
+
 We can save a test frame with just:
 
-cv2.imwrite("test.jpg", frame)
+    cv2.imwrite("test.jpg", frame)
+
 And now we can see that our camera works. Success!
 
 don&rsquo;t mind my corona beard
 don’t mind my corona beard
 
-#Finding The Background
+# Finding The Background
+
 OK, now that we have a video feed, how do we identify the background so we can replace it? This is the tricky part …
 
 While Zoom doesn’t seem to have commented anywhere about how they implemented this, the way it behaves makes me suspect that a neural network is involved, it’s hard to explain but the results look like one. Additionally, I found an article about Microsoft Teams implementing background blur with a convolutional neural network.
@@ -61,82 +71,91 @@ To get faster inference (prediction) in the browser a WebGL backend is preferred
 To make this easier to setup, we’ll start by setting up a small containerized tensorflow-gpu + node environment / project. Using this with nvidia-docker is much easier than getting all of the right dependencies setup on your host, it only requires docker and an up-to-date GPU driver on the host.
 
 bodypix/package.jsonJSON
-{
-    "name": "bodypix",
-    "version": "0.0.1",
-    "dependencies": {
-        "@tensorflow-models/body-pix": "^2.0.5",
-        "@tensorflow/tfjs-node-gpu": "^1.7.1"
+
+    {
+        "name": "bodypix",
+        "version": "0.0.1",
+        "dependencies": {
+            "@tensorflow-models/body-pix": "^2.0.5",
+            "@tensorflow/tfjs-node-gpu": "^1.7.1"
+        }
     }
-}
+
+
 bodypix/DockerfileDockerfile
-# Base image with TensorFlow GPU requirements
-FROM nvcr.io/nvidia/cuda:10.0-cudnn7-runtime-ubuntu18.04
-# Install node
-RUN apt update && apt install -y curl make build-essential \
-    && curl -sL https://deb.nodesource.com/setup_12.x | bash - \
-    && apt-get -y install nodejs \
-    && mkdir /.npm \
-    && chmod 777 /.npm
-# Ensure we can get enough GPU memory
-# Unfortunately tfjs-node-gpu exposes no gpu configuration :(
-ENV TF_FORCE_GPU_ALLOW_GROWTH=true
-# Install node package dependencies
-WORKDIR /src
-COPY package.json /src/
-RUN npm install
-# Setup our app as the entrypoint
-COPY app.js /src/
-ENTRYPOINT node /src/app.js
+
+    # Base image with TensorFlow GPU requirements
+    FROM nvcr.io/nvidia/cuda:10.0-cudnn7-runtime-ubuntu18.04
+    # Install node
+    RUN apt update && apt install -y curl make build-essential \
+        && curl -sL https://deb.nodesource.com/setup_12.x | bash - \
+        && apt-get -y install nodejs \
+        && mkdir /.npm \
+        && chmod 777 /.npm
+    # Ensure we can get enough GPU memory
+    # Unfortunately tfjs-node-gpu exposes no gpu configuration :(
+    ENV TF_FORCE_GPU_ALLOW_GROWTH=true
+    # Install node package dependencies
+    WORKDIR /src
+    COPY package.json /src/
+    RUN npm install
+    # Setup our app as the entrypoint
+    COPY app.js /src/
+    ENTRYPOINT node /src/app.js
+
 Now to serve the results… WARNING: I am not a node expert! This is just my quick evening hack, bear with me :-)
 
 The following simple script replies to an HTTP POSTed image with a binary mask (an 2d array of binary pixels, where zero pixels are the background).
 
 bodypix/app.jsjavascript
-const tf = require('@tensorflow/tfjs-node-gpu');
-const bodyPix = require('@tensorflow-models/body-pix');
-const http = require('http');
-(async () => {
-    const net = await bodyPix.load({
-        architecture: 'MobileNetV1',
-        outputStride: 16,
-        multiplier: 0.75,
-        quantBytes: 2,
-    });
-    const server = http.createServer();
-    server.on('request', async (req, res) => {
-        var chunks = [];
-        req.on('data', (chunk) => {
-            chunks.push(chunk);
+
+    const tf = require('@tensorflow/tfjs-node-gpu');
+    const bodyPix = require('@tensorflow-models/body-pix');
+    const http = require('http');
+    (async () => {
+        const net = await bodyPix.load({
+            architecture: 'MobileNetV1',
+            outputStride: 16,
+            multiplier: 0.75,
+            quantBytes: 2,
         });
-        req.on('end', async () => {
-            const image = tf.node.decodeImage(Buffer.concat(chunks));
-            segmentation = await net.segmentPerson(image, {
-                flipHorizontal: false,
-                internalResolution: 'medium',
-                segmentationThreshold: 0.7,
+        const server = http.createServer();
+        server.on('request', async (req, res) => {
+            var chunks = [];
+            req.on('data', (chunk) => {
+                chunks.push(chunk);
             });
-            res.writeHead(200, { 'Content-Type': 'application/octet-stream' });
-            res.write(Buffer.from(segmentation.data));
-            res.end();
-            tf.dispose(image);
+            req.on('end', async () => {
+                const image = tf.node.decodeImage(Buffer.concat(chunks));
+                segmentation = await net.segmentPerson(image, {
+                    flipHorizontal: false,
+                    internalResolution: 'medium',
+                    segmentationThreshold: 0.7,
+                });
+                res.writeHead(200, { 'Content-Type': 'application/octet-stream' });
+                res.write(Buffer.from(segmentation.data));
+                res.end();
+                tf.dispose(image);
+            });
         });
-    });
-    server.listen(9000);
-})();
+        server.listen(9000);
+    })();
+
 We can use numpy and requests to convert a frame to a mask from our python script with the following method:
 
-def get_mask(frame, bodypix_url='http://localhost:9000'):
-    _, data = cv2.imencode(".jpg", frame)
-    r = requests.post(
-        url=bodypix_url,
-        data=data.tobytes(),
-        headers={'Content-Type': 'application/octet-stream'})
-    # convert raw bytes to a numpy array
-    # raw data is uint8[width * height] with value 0 or 1
-    mask = np.frombuffer(r.content, dtype=np.uint8)
-    mask = mask.reshape((frame.shape[0], frame.shape[1]))
-    return mask
+    def get_mask(frame, bodypix_url='http://localhost:9000'):
+        _, data = cv2.imencode(".jpg", frame)
+        r = requests.post(
+            url=bodypix_url,
+            data=data.tobytes(),
+            headers={'Content-Type': 'application/octet-stream'})
+        # convert raw bytes to a numpy array
+        # raw data is uint8[width * height] with value 0 or 1
+        mask = np.frombuffer(r.content, dtype=np.uint8)
+        mask = mask.reshape((frame.shape[0], frame.shape[1]))
+        return mask
+    
+    
 Which gives us a result something like:
 
 
@@ -152,25 +171,26 @@ After grabbing the awesome “Virtual Background” picture from that twitter th
 
 … we can do the following:
 
-# read in a "virtual background" (should be in 16:9 ratio)
-replacement_bg_raw = cv2.imread("background.jpg")
+    # read in a "virtual background" (should be in 16:9 ratio)
+    replacement_bg_raw = cv2.imread("background.jpg")
 
-# resize to match the frame (width & height from before)
-width, height = 720, 1280
-replacement_bg = cv2.resize(replacement_bg_raw, (width, height))
+    # resize to match the frame (width & height from before)
+    width, height = 720, 1280
+    replacement_bg = cv2.resize(replacement_bg_raw, (width, height))
 
-# combine the background and foreground, using the mask and its inverse
-inv_mask = 1-mask
-for c in range(frame.shape[2]):
-    frame[:,:,c] = frame[:,:,c]*mask + replacement_bg[:,:,c]*inv_mask
-Which gives us:
+    # combine the background and foreground, using the mask and its inverse
+    inv_mask = 1-mask
+    for c in range(frame.shape[2]):
+        frame[:,:,c] = frame[:,:,c]*mask + replacement_bg[:,:,c]*inv_mask
+    Which gives us:
 
 
 The raw mask is clearly not tight enough due to the performance trade-offs we made with our BodyPix parameters but .. so far so good!
 
 This background gave me an idea …
 
-#Making It Fun
+# Making It Fun
+
 Now that we have the masking done, what can we do to make it look better?
 
 The first obvious step is to smooth the mask out, with something like:
@@ -189,6 +209,7 @@ def post_process_mask(mask):
     mask = cv2.dilate(mask, np.ones((10,10), np.uint8) , iterations=1)
     mask = cv2.blur(mask.astype(float), (30,30))
     return mask
+    
 Now the edges are blurry which is good, but we need to start building the hologram effect.
 
 Hollywood holograms typically have the following properties:
