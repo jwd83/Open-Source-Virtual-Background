@@ -70,7 +70,7 @@ To get faster inference (prediction) in the browser a WebGL backend is preferred
 
 To make this easier to setup, we’ll start by setting up a small containerized tensorflow-gpu + node environment / project. Using this with nvidia-docker is much easier than getting all of the right dependencies setup on your host, it only requires docker and an up-to-date GPU driver on the host.
 
-bodypix/package.jsonJSON
+bodypix/package.json
 
     {
         "name": "bodypix",
@@ -82,7 +82,7 @@ bodypix/package.jsonJSON
     }
 
 
-bodypix/DockerfileDockerfile
+bodypix/Dockerfile
 
     # Base image with TensorFlow GPU requirements
     FROM nvcr.io/nvidia/cuda:10.0-cudnn7-runtime-ubuntu18.04
@@ -107,7 +107,7 @@ Now to serve the results… WARNING: I am not a node expert! This is just my qui
 
 The following simple script replies to an HTTP POSTed image with a binary mask (an 2d array of binary pixels, where zero pixels are the background).
 
-bodypix/app.jsjavascript
+bodypix/app.js
 
     const tf = require('@tensorflow/tfjs-node-gpu');
     const bodyPix = require('@tensorflow-models/body-pix');
@@ -195,20 +195,21 @@ Now that we have the masking done, what can we do to make it look better?
 
 The first obvious step is to smooth the mask out, with something like:
 
-def post_process_mask(mask):
-    mask = cv2.dilate(mask, np.ones((10,10), np.uint8) , iterations=1)
-    mask = cv2.erode(mask, np.ones((10,10), np.uint8) , iterations=1)
-    return mask
+    def post_process_mask(mask):
+        mask = cv2.dilate(mask, np.ones((10,10), np.uint8) , iterations=1)
+        mask = cv2.erode(mask, np.ones((10,10), np.uint8) , iterations=1)
+        return mask
+
 This can help a bit, but it’s pretty minor and just replacing the background is a little boring, since we’ve hacked this up ourselves we can do anything instead of just a basic background removal …
 
 Given that we’re using a Star Wars “virtual background” I decided to create hologram effect to fit in better. This also lets lean into blurring the mask.
 
 First update the post processing to:
 
-def post_process_mask(mask):
-    mask = cv2.dilate(mask, np.ones((10,10), np.uint8) , iterations=1)
-    mask = cv2.blur(mask.astype(float), (30,30))
-    return mask
+    def post_process_mask(mask):
+        mask = cv2.dilate(mask, np.ones((10,10), np.uint8) , iterations=1)
+        mask = cv2.blur(mask.astype(float), (30,30))
+        return mask
     
 Now the edges are blurry which is good, but we need to start building the hologram effect.
 
@@ -217,6 +218,7 @@ Hollywood holograms typically have the following properties:
 washed out / monocrhomatic color, as if done with a bright laser
 scan lines or a grid like effect, as if many beams created the image
 “ghosting” as if the projection is done in layers or imperfectly reaching the correct distance
+
 We can add these step by step.
 
 First for the blue tint we just need to apply an OpenCV colormap:
@@ -273,7 +275,7 @@ We’re also going to actually wire this all up with docker.
 
 First create a requirements.txt with our dependencies:
 
-    fakecam/requirements.txtDockerfile
+    fakecam/requirements.txt
     numpy==1.18.2
     opencv-python==4.2.0.32
     requests==2.23.0
@@ -281,7 +283,7 @@ First create a requirements.txt with our dependencies:
     
 And then the Dockerfile for the fake camera app:
 
-fakecam/DockerfileDockerfile
+fakecam/Dockerfile
 
     FROM python:3-buster
     # ensure pip is up to date
@@ -328,7 +330,7 @@ We can fix this before outputting and then send a frame with:
 
 All together the script looks like:
 
-    fakecam/fake.pyPython
+fakecam/fake.py
     import os
     import cv2
     import numpy as np
