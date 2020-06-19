@@ -441,4 +441,3 @@ Here’s a quick clip I recorded of this in action:
 Look! I’m dialing into the millenium falcon with an open source camera stack!
 
 I’m pretty happy with how this came out. I’ll definitely be joining all of my meetings this way in the morning. 
-
