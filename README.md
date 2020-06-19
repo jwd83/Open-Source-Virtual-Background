@@ -325,7 +325,8 @@ We can fix this before outputting and then send a frame with:
 
     frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     fake.schedule_frame(frame)
-    All together the script looks like:
+
+All together the script looks like:
 
     fakecam/fake.pyPython
     import os
@@ -416,7 +417,8 @@ We can fix this before outputting and then send a frame with:
         # fake webcam expects RGB
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         fake.schedule_frame(frame)
-    Now build the images:
+
+Now build the images:
 
     docker build -t bodypix ./bodypix
     docker build -t fakecam ./fakecam
